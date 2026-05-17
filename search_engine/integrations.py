@@ -315,6 +315,59 @@ async def fetch_startech_api(query: str, min_price: str, max_price: str, brand: 
         
     return results
 
+async def fetch_rokomari_api(query: str, min_price: str, max_price: str, brand: str) -> list:
+    """REAL LIVE SCRAPER for Rokomari.com!"""
+    results = []
+    
+    search_terms = [brand, query] if brand else [query]
+    base_q = "+".join(search_terms).replace(' ', '+')
+    url = f"https://www.rokomari.com/search?term={base_q}"
+    
+    try:
+        async with httpx.AsyncClient(headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}) as client:
+            response = await client.get(url, timeout=6.0, follow_redirects=True)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                text_areas = soup.find_all('div', class_='book-text-area', limit=5)
+                
+                for idx, area in enumerate(text_areas):
+                    a_tag = area.parent
+                    if not a_tag or a_tag.name != 'a':
+                        continue
+                        
+                    title_elem = area.find('h4', class_='book-title')
+                    title = title_elem.text.strip() if title_elem else "Rokomari Product"
+                    
+                    href = a_tag.get('href', url)
+                    if href.startswith('/'):
+                        href = "https://www.rokomari.com" + href
+                        
+                    img_elem = a_tag.find('img')
+                    img_url = img_elem.get('data-src') or img_elem.get('src') if img_elem else "https://via.placeholder.com/400x300"
+                    
+                    price_elem = area.find('p', class_='book-price')
+                    price_val = 0.0
+                    if price_elem:
+                        prices = re.findall(r'\d+', price_elem.text.replace(',', ''))
+                        if prices:
+                            price_val = float(prices[-1])
+                            price_val = round(price_val / 110.0, 2) # Rough BDT to USD conversion
+                            
+                    results.append({
+                        'id': f"rok_{idx}",
+                        'title': title,
+                        'price': price_val,
+                        'currency': '$',
+                        'store_name': 'Rokomari (LIVE)',
+                        'image_url': img_url,
+                        'product_url': href,
+                        'rating': 4.6
+                    })
+    except Exception as e:
+        print(f"Rokomari Scraper error: {e}")
+        
+    return results
+
 async def search_all_stores(query: str, min_price: str = '', max_price: str = '', brand: str = '') -> list:
     # Fan-out to all stores concurrently using asyncio.gather
     # If one store fails, the others will still complete successfully thanks to try-except blocks inside each fetch
@@ -327,7 +380,8 @@ async def search_all_stores(query: str, min_price: str = '', max_price: str = ''
         fetch_alibaba_api(query, min_price, max_price, brand),
         fetch_daraz_api(query, min_price, max_price, brand),
         fetch_ebay_api(query, min_price, max_price, brand),
-        fetch_startech_api(query, min_price, max_price, brand)
+        fetch_startech_api(query, min_price, max_price, brand),
+        fetch_rokomari_api(query, min_price, max_price, brand)
     )
     
     # Flatten the list of lists
@@ -349,7 +403,7 @@ async def search_all_stores(query: str, min_price: str = '', max_price: str = ''
             
         # Check brand (simplified: look for brand name in title)
         if b_lower and b_lower not in item.get('title', '').lower():
-            if 'StarTech' not in item.get('store_name', ''):
+            if 'StarTech' not in item.get('store_name', '') and 'Rokomari' not in item.get('store_name', ''):
                 continue
             
         filtered_results.append(item)
