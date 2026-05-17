@@ -81,6 +81,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function createProductCard(product) {
         const div = document.createElement('div');
         div.className = 'product-card animate-card';
+        div.style.cursor = 'pointer';
+        div.onclick = () => window.open(product.product_url, '_blank');
         
         // Safe defaults
         const imgUrl = product.image_url || 'https://via.placeholder.com/400x300?text=No+Image';
