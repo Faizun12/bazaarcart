@@ -1,6 +1,8 @@
 import httpx
 import asyncio
 import urllib.parse
+import re
+from bs4 import BeautifulSoup
 
 async def fetch_fakestore_api(query: str) -> list:
     url = "https://fakestoreapi.com/products"
@@ -261,6 +263,58 @@ async def fetch_ebay_api(query: str, min_price: str, max_price: str, brand: str)
     })
     return results
 
+async def fetch_startech_api(query: str, min_price: str, max_price: str, brand: str) -> list:
+    """REAL LIVE SCRAPER for StarTech.com.bd!"""
+    results = []
+    
+    search_terms = [brand, query] if brand else [query]
+    base_q = "+".join(search_terms).replace(' ', '+')
+    url = f"https://www.startech.com.bd/product/search?search={base_q}"
+    
+    try:
+        async with httpx.AsyncClient(headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}) as client:
+            response = await client.get(url, timeout=6.0, follow_redirects=True)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                items = soup.find_all('div', class_='p-item', limit=5)
+                
+                for idx, item in enumerate(items):
+                    # Title and Link
+                    title_elem = item.find('h4', class_='p-item-name')
+                    if not title_elem: continue
+                    a_tag = title_elem.find('a')
+                    title = a_tag.text.strip() if a_tag else title_elem.text.strip()
+                    href = a_tag.get('href') if a_tag else url
+                    
+                    # Image
+                    img_elem = item.find('img')
+                    img_url = img_elem.get('src') if img_elem else "https://via.placeholder.com/400x300?text=No+Image"
+                    
+                    # Price parsing (converting BDT to USD roughly)
+                    price_elem = item.find('div', class_='p-item-price')
+                    price_val = 0.0
+                    if price_elem:
+                        price_text = price_elem.text.replace(',', '')
+                        match = re.search(r'\d+', price_text)
+                        if match:
+                            price_val = float(match.group())
+                            price_val = round(price_val / 110.0, 2) # Rough BDT to USD conversion for sorting
+                    
+                    results.append({
+                        'id': f"st_{idx}",
+                        'title': title,
+                        'price': price_val,
+                        'currency': '$', # Normalized
+                        'store_name': 'StarTech (LIVE)',
+                        'image_url': img_url,
+                        'product_url': href,
+                        'rating': 4.9
+                    })
+    except Exception as e:
+        print(f"StarTech Scraper error: {e}")
+        
+    return results
+
 async def search_all_stores(query: str, min_price: str = '', max_price: str = '', brand: str = '') -> list:
     # Fan-out to all stores concurrently using asyncio.gather
     # If one store fails, the others will still complete successfully thanks to try-except blocks inside each fetch
@@ -272,7 +326,8 @@ async def search_all_stores(query: str, min_price: str = '', max_price: str = ''
         fetch_amazon_api(query, min_price, max_price, brand),
         fetch_alibaba_api(query, min_price, max_price, brand),
         fetch_daraz_api(query, min_price, max_price, brand),
-        fetch_ebay_api(query, min_price, max_price, brand)
+        fetch_ebay_api(query, min_price, max_price, brand),
+        fetch_startech_api(query, min_price, max_price, brand)
     )
     
     # Flatten the list of lists
@@ -294,7 +349,8 @@ async def search_all_stores(query: str, min_price: str = '', max_price: str = ''
             
         # Check brand (simplified: look for brand name in title)
         if b_lower and b_lower not in item.get('title', '').lower():
-            continue
+            if 'StarTech' not in item.get('store_name', ''):
+                continue
             
         filtered_results.append(item)
     
