@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-v5tdh%1zk&l-sql+xjx18ujva9+5x%98a(mow*6*56vevps)k*
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['bazaarcart.onrender.com', 'localhost', '127.0.0.1']
 
 
 # Application definition
